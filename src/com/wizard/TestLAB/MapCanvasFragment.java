@@ -66,21 +66,6 @@ public class MapCanvasFragment extends MapFragment
         super.onCreate(savedInstanceState);
         Log.d(DEBUGTAG, "onCreate MapCanvasFragment");
 
-        locationsList = new ArrayList<LatLng>();
-        locationsList.clear();
-        locationsList.add(new LatLng(50.87410716666667, 5.2745365));
-        locationsList.add(new LatLng(50.874272833333336, 5.274491833333333));
-        locationsList.add(new LatLng(50.874243166666666, 5.274399833333334));
-        locationsList.add(new LatLng(50.8740865, 5.274438));
-        locationsList.add(new LatLng(50.874089166666664, 5.274469666666667));
-        locationsList.add(new LatLng(50.87418483333333, 5.2742051666666665));
-        locationsList.add(new LatLng(50.8741623333333, 5.274212666666667));
-        locationsList.add(new LatLng(50.874191333333336, 5.274329166666667));
-        locationsList.add(new LatLng(50.87422, 5.274323833333334));
-        locationsList.add(new LatLng(50.8742515, 5.2744315));
-        locationsList.add(new LatLng(50.874073333333335, 5.274140166666666));
-        locationsList.add(new LatLng(50.874213166666664, 5.274507666666667));
-
     }
 
     /*
@@ -172,7 +157,6 @@ public class MapCanvasFragment extends MapFragment
         currentPositionMarker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.ic_map_current_position_arrow_small));
         currentPositionMarker.setAnchor(0.5f, 0.5f);
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, MAXZOOM));
-        populateMap();
     }
 
     public void moveCurrentPositionMarker(LatLng newLocation)
@@ -193,92 +177,42 @@ public class MapCanvasFragment extends MapFragment
         }
     }
 
-    private void populateMap()
+
+    public void addMarker(LatLng position, String title, String snippet, int color)
+    {
+        MarkerOptions mOptions = new MarkerOptions();
+        mOptions.title(title);
+        mOptions.snippet(snippet);
+        mOptions.icon(BitmapDescriptorFactory.defaultMarker(resolveColorOfMarker(color)));
+        mOptions.position(position);
+        map.addMarker(mOptions);
+    }
+
+    public float resolveColorOfMarker(int color)
     {
 
-        LatLng position = locationsList.get(0);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
-                .title("0x00")
-                .snippet(position.toString()));
-
-        position = locationsList.get(1);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
-                .title("0x01")
-                .snippet(position.toString()));
-
-        position = locationsList.get(2);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
-                .title("0x02")
-                .snippet(position.toString()));
-
-        position = locationsList.get(3);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN))
-                .title("0x03")
-                .snippet(position.toString()));
-
-        position = locationsList.get(4);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
-                .title("0x04")
-                .snippet(position.toString()));
-
-        position = locationsList.get(5);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA))
-                .title("0x05")
-                .snippet(position.toString()));
-
-        position = locationsList.get(6);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
-                .title("0x06")
-                .snippet(position.toString()));
-
-        position = locationsList.get(7);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW))
-                .title("0x07")
-                .snippet(position.toString()));
-
-        position = locationsList.get(8);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ROSE))
-                .title("0x08")
-                .snippet(position.toString()));
-
-        position = locationsList.get(9);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
-                .title("0x09")
-                .snippet(position.toString()));
-
-        position = locationsList.get(10);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE))
-                .title("0x0A")
-                .snippet(position.toString()));
-
-        position = locationsList.get(11);
-        map.addMarker(new MarkerOptions()
-                .position(position)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW))
-                .title("Refentie Punt op straat")
-                .snippet(position.toString()));
+        if(color == 0)
+            return BitmapDescriptorFactory.HUE_AZURE;
+        else if(color == 1)
+            return BitmapDescriptorFactory.HUE_BLUE;
+        else if(color == 2)
+            return BitmapDescriptorFactory.HUE_CYAN;
+        else if(color == 3)
+            return BitmapDescriptorFactory.HUE_GREEN;
+        else if(color == 4)
+            return BitmapDescriptorFactory.HUE_MAGENTA;
+        else if(color == 5)
+            return BitmapDescriptorFactory.HUE_ORANGE;
+        else if(color == 6)
+            return BitmapDescriptorFactory.HUE_RED;
+        else if(color == 6)
+            return BitmapDescriptorFactory.HUE_ROSE;
+        else if(color == 7)
+            return BitmapDescriptorFactory.HUE_VIOLET;
+        else if(color == 8)
+            return BitmapDescriptorFactory.HUE_YELLOW;
+        else
+            return BitmapDescriptorFactory.HUE_RED;
     }
 
 

@@ -30,6 +30,8 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Ima
     private boolean gpsSetup;
     private boolean gpsFix;
     private LatLng currentLocation;
+    private LayerManager layerManager;
+
 
 
     /**
@@ -60,7 +62,14 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Ima
 
         gpsSetup = false;
         gpsFix = false;
+        layerManager = new LayerManager();
+        //dirty cast ;-)
+        MapCanvasFragment mcf = (MapCanvasFragment) frag;
 
+        for(int index = 0; index < layerManager.getNumberOfPoints(); index++)
+        {
+            mcf.addMarker(layerManager.getPoint(index), "0x0"+Integer.toHexString(index).toUpperCase(), layerManager.getPoint(index).toString(), index);
+        }
     }
 
     @Override
@@ -79,6 +88,8 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Ima
         {
             Log.d(DEBUGTAG, "GPS hardware is not enabled");
         }
+
+
     }
 
 
