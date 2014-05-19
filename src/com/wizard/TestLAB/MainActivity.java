@@ -164,6 +164,26 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Ima
             MapCanvasFragment frag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
             frag.moveCurrentPositionMarker(currentLocation);
 
+            //If current position is close to marker send callback to main act
+            double newLocLat = location.getLatitude();
+            double newLocLon = location.getLongitude();
+/*        for(LatLng loc : locationsList)
+        {
+            if (distance(newLocLat, newLocLon, loc.latitude, loc.longitude) < 1 )
+            {
+                markerInRangeListener.markerInRange();
+            }
+        }*/
+            for(int i = 0; i < layerManager.getNumberOfPoints(); i++)
+            {
+                if (layerManager.distance(newLocLat, newLocLon, layerManager.getPoint(i).latitude, layerManager.getPoint(i).longitude) < 1 )
+                {
+                    markerInRange();
+                }
+
+            }
+
+
             statusTwo.setText("Lat/Lon: " + location.getLatitude() + "/" + location.getLongitude());
             statusThree.setText("height: " + Double.toString(location.getAltitude()));
             statusFour.setText("Accuracy: " + location.getAccuracy() + "m");
