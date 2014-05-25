@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.*;
 import android.widget.Toast;
+import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
@@ -23,8 +24,6 @@ public class MapCanvasFragment extends MapFragment
     private GoogleMap map;
 
     private ArrayList<LatLng> locationsList;
-
-    private ImarkerInRange markerInRangeListener;
 
     /**
      * Creates a new instance of the mapfragment
@@ -44,15 +43,6 @@ public class MapCanvasFragment extends MapFragment
     public void onAttach(Activity activity)
     {
         super.onAttach(activity);
-        try
-        {
-            markerInRangeListener = (ImarkerInRange) activity;
-        }
-        catch(ClassCastException cce)
-        {
-            Log.d(DEBUGTAG, "Activity is not listening to interface ImarkerInRange");
-            Log.d(DEBUGTAG, cce.toString());
-        }
     }
 
     /*
@@ -159,12 +149,20 @@ public class MapCanvasFragment extends MapFragment
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, MAXZOOM));
     }
 
-    public void moveCurrentPositionMarker(LatLng newLocation)
+    public void moveCurrentPositionMarker(LatLng newLocation, int newBearing)
     {
         //Center the map view to newLocation
-        map.moveCamera(CameraUpdateFactory.newLatLng(newLocation));
+        //map.moveCamera(CameraUpdateFactory.newLatLng(newLocation));
         //Move The Marker
         currentPositionMarker.setPosition(newLocation);
+        // Construct a CameraPosition focusing on Mountain View and animate the camera to that position.
+        CameraPosition cameraPosition = new CameraPosition.Builder()
+                .target(newLocation)      // Sets the center of the map to the new location
+                .zoom(map.getCameraPosition().zoom)                   // Sets the zoom to prev defined zoom
+                .bearing( (float) newBearing)                // Sets the orientation of the camera to the new bearing
+                .tilt(0)                   // Sets the tilt of the camera to 0 degrees
+                .build();                   // Creates a CameraPosition from the builder
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
     }
 
 

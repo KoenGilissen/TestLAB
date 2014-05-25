@@ -18,6 +18,7 @@ import android.widget.TextView;
 public class OnPointDialogFragment extends DialogFragment
 {
     private static final String DEBUGTAG = "OpenFileDialogFragment";
+    private Activity act;
     private IonDialogDoneListener onDialogDoneListener;
     private TextView textViewInfo;
     private Button buttonOpen;
@@ -35,6 +36,7 @@ public class OnPointDialogFragment extends DialogFragment
     public void onAttach(Activity activity)
     {
         super.onAttach(activity);
+        act = activity;
         try
         {
             onDialogDoneListener = (IonDialogDoneListener) activity;
@@ -87,6 +89,16 @@ public class OnPointDialogFragment extends DialogFragment
             }
         }
     };
+
+    public void setTitle(String title)
+    {
+        getDialog().setTitle(title);
+    }
+
+    public void setContent(String content)
+    {
+        textViewInfo.setText(content);
+    }
 
 }
 

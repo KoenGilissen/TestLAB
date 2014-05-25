@@ -9,8 +9,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Title"
-            android:id="@+id/textView_title" android:layout_gravity="left|center_vertical"
-            android:layout_weight="0"/>
+            android:id="@+id/textView_title"
+            android:layout_gravity="left|center_vertical"
+            android:layout_weight="0" android:lines="10"/>
 
     <LinearLayout
             android:orientation="horizontal"
