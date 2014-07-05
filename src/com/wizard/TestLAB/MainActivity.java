@@ -169,14 +169,13 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
             //Update MapCanvasFragment with new location and orientation
             currentLocation = new LatLng( location.getLatitude(),  location.getLongitude());
             MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
-            mapFrag.moveCurrentPositionMarker(currentLocation, 0);
-
+            mapFrag.moveCurrentPositionMarker(currentLocation, 0); //do not change bearing, compass sensor drifts....
 
             //Check if the new location is close to measurement point
             double newLocLat = location.getLatitude();
             double newLocLon = location.getLongitude();
             double shortestDistance = Double.MAX_VALUE;
-            double currentDistance = Double.MAX_VALUE;
+            double currentDistance;
             int measurementPointIndex = 0;
 
             for(int i = 0; i < layerManager.getNumberOfPoints(); i++)
@@ -216,7 +215,7 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
                 if(dialogFrag != null) //if the dialog is alive and user has gone out of range
                 {
                     //ft.remove(dlg); //Kill it http://developer.android.com/reference/android/app/DialogFragment.html
-                    // ft.addToBackStack(null); Do not remember this... shity developers guide google...
+                    // ft.addToBackStack(null); Do not remember this... shity developersguide google...
                     dialogFrag.dismiss();
                 }
             }
