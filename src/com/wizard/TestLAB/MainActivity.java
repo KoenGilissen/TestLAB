@@ -1,7 +1,12 @@
 package com.wizard.TestLAB;
 
 import android.app.*;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -9,32 +14,52 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.*;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.google.android.gms.maps.model.LatLng;
 
-public class MainActivity extends Activity implements IonDialogDoneListener, SensorEventListener
+import java.util.ArrayList;
+import java.util.Set;
+
+public class MainActivity extends Activity
 {
 
     private static final String DEBUGTAG = "MainActivity";
+    private final static boolean DEBUGGINGMODE = true;
     private TextView statusOne;
     private TextView statusTwo;
     private TextView statusThree;
     private TextView statusFour;
     private TextView statusFive;
 
-    private LocationManager locationManager;
-    private LocationProvider locationProvider;
-    private boolean gpsSetup;
     private LatLng currentLocation;
     private LayerManager layerManager;
-    private double currentShortestDistance;
-    private String shortestMeasurementPointInfo;
 
-    // record the compass picture angle turned
-    private int currentDegree;
-    private SensorManager mSensorManager;
+    // Bluetooth...
+    private BluetoothAdapter bluetoothAdapter = null;
+    private boolean bluetoothAvailable;
+    private Set<BluetoothDevice> pairedDevices;
+    private ArrayList<String> discoveredDevices  = null;
+    private BlueService blueService  = null;
+
+    // Key names received from the BlueService Handler
+    public static final String DEVICE_NAME = "device_name";
+    public static final String TOAST = "toast";
+
+    // Intent request codes
+    private static final int REQUEST_ENABLE_BT = 1;
+    private static final int REQUEST_CONNECT_DEVICE = 2;
+
+    // Message types sent from the BluetoothChatService Handler
+    public static final int MESSAGE_STATE_CHANGE = 1;
+    public static final int MESSAGE_READ = 2;
+    public static final int MESSAGE_WRITE = 3;
+    public static final int MESSAGE_DEVICE_NAME = 4;
+    public static final int MESSAGE_TOAST = 5;
 
 
     /**
@@ -49,7 +74,8 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
         Fragment frag = fm.findFragmentById(R.id.main_fragment_container);
         if(frag == null)
         {
-            Log.d(DEBUGTAG, "Creating new Instance of MapCanvasFragment");
+            if(DEBUGGINGMODE)
+                Log.d(DEBUGTAG, "Creating new Instance of MapCanvasFragment");
             frag = MapCanvasFragment.newInstance();
             fm.beginTransaction().add(R.id.main_fragment_container, frag).commit();
         }
@@ -63,10 +89,7 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
         statusFour = (TextView) findViewById(R.id.status_four);
         statusFive = (TextView) findViewById(R.id.status_five);
 
-        gpsSetup = false;
         layerManager = new LayerManager();
-        currentShortestDistance = Double.MAX_VALUE;
-        shortestMeasurementPointInfo = "";
         //dirty cast ;-)
         MapCanvasFragment mcf = (MapCanvasFragment) frag;
 
@@ -75,16 +98,81 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
             mcf.addMarker(layerManager.getPoint(index), "0x0"+Integer.toHexString(index).toUpperCase(), layerManager.getPoint(index).toString(), index);
         }
 
-        // initialize sensor capabilities
-        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        //Intialize global activity variables
+        discoveredDevices = new ArrayList<String>();
+
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        registerReceiver(broadcastReceiver, filter); // Don't forget to unregister during onDestroy
+        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        this.registerReceiver(broadcastReceiver, filter);
+
+        //Test if Bluetooth hardware is available on this device
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if(bluetoothAdapter == null)
+        {
+            //Bluetooth not supported on this device...
+            bluetoothAvailable = false;
+            //Gracefully exit: activity is done and should be closed!
+            finish();
+        }
+        else
+        {
+            if(DEBUGGINGMODE)
+                Log.d(DEBUGTAG, "Bluetooth hardware available on this device");
+            bluetoothAvailable = true;
+        }
+
+        if(bluetoothAvailable)
+        {
+            if (!bluetoothAdapter.isEnabled())
+            {
+                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                //enable bluetooth dialog ...
+                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+            }
+        }
+        // Check paired devices
+        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices(); //Returns unmodifiable set of BluetoothDevice, or null on error
+        /**
+        // If there are paired devices
+        if(pairedDevices != null) // Could be null if Bluetooth Hardware is not available or turned off!
+        {
+            if (pairedDevices.size() > 0)
+            {
+                mainTextView.setText("Found Paired devices: " + Integer.toString(pairedDevices.size()) + "\n");
+                //TODO do something I guess...
+                for(BluetoothDevice device : pairedDevices)
+                {
+                    mainTextView.append(device.getName() + " : " + device.getAddress() + " \n");
+                }
+            }
+        }
+         // Bluetooth device discovery
+         if(bluetoothAdapter.isEnabled())
+         {
+         Log.d(DEBUGTAG, "Starting device discovery...");
+         discoverDevices();
+         }
+         **/
+
     }
 
     @Override
-    protected void onResume()
+    protected synchronized void onResume()
     {
         super.onResume();
-        // Register sensor listener
-        mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION), SensorManager.SENSOR_DELAY_NORMAL);
+        if(DEBUGGINGMODE)
+            Log.d(DEBUGTAG, "onResume():");
+        // Performing this check in onResume() covers the case in which BT was
+        // not enabled during onStart(), so we were paused to enable it...
+        // onResume() will be called when ACTION_REQUEST_ENABLE activity returns.
+        if (blueService != null) {
+            // Only if the state is STATE_NONE, do we know that we haven't started already
+            if (blueService.getState() == blueService.STATE_NONE) {
+                // Start the Bluetooth services
+                blueService.start();
+            }
+        }
     }
 
     @Override
@@ -93,15 +181,9 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
         super.onStart();
         // keep screen on, do not put screen into sleep!
         this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // setup GPS location provider service...
-        if(!gpsSetup)
+        if(bluetoothAdapter.enable())
         {
-            this.setupGpsController();
-        }
-
-        if(!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-        {
-            Log.d(DEBUGTAG, "GPS hardware is not enabled");
+            setupConnection();
         }
     }
 
@@ -109,175 +191,183 @@ public class MainActivity extends Activity implements IonDialogDoneListener, Sen
     protected void onPause()
     {
         super.onPause();
-        //unregister sensorlistener to save battery power
-        mSensorManager.unregisterListener(this);
     }
 
     @Override
-    public void onDialogDone(String tag, boolean cancelled, String message) 
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
     {
-        Log.d(DEBUGTAG, "Tag: " + tag + " canceled: " + Boolean.toString(cancelled) + " message: " + message);
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == REQUEST_ENABLE_BT)
+        {
+            if(resultCode == RESULT_OK)
+            {
+                if(DEBUGGINGMODE)
+                    Log.d(DEBUGTAG, "Bluetooth Enabled!");
+                setupConnection();
+            }
+        }
+
     }
 
-    /**
-     * Method to setup the GPS controller
-     */
-    public void setupGpsController()
+    @Override
+    protected void onDestroy()
     {
-        try
+        super.onDestroy();
+        if(DEBUGGINGMODE)
+            Log.d(DEBUGTAG,"onDestroy():");
+        //kill off broadcast receiver
+        if(DEBUGGINGMODE)
+            Log.d(DEBUGTAG, "Killing Broadcast receivers");
+        unregisterReceiver(broadcastReceiver);
+        //Kill bluetooth service
+        if(DEBUGGINGMODE)
+            Log.d(DEBUGTAG, "Killing bluetooth service");
+        if (blueService != null)
         {
-            // According to: http://developer.android.com/training/basics/location/locationmanager.html
-            // Acquire a reference to the system Location Manager
-            locationManager = (LocationManager)  this.getSystemService(Context.LOCATION_SERVICE);
-            locationProvider = locationManager.getProvider(LocationManager.GPS_PROVIDER);
-            locationManager.addGpsStatusListener(gpsStatusListener);
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, locationListener);
-            // ENABLE TEST PROVIDER ?
-            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
-            gpsSetup = true;
-        }
-        catch(Exception exp)
-        {
-            Log.d(DEBUGTAG,"Error: failed setupGpsController: " + exp.toString());
-            gpsSetup = false;
+            blueService.stop();
         }
     }
 
-    /**
-     * Location Listener for on-board GPS
-     */
-    private LocationListener locationListener = new LocationListener()
+    private void setupConnection()
     {
 
-        public void onStatusChanged(String provider, int status, Bundle extras)
-        {
-            // TODO Auto-generated method stub
-        }
+        // Initialize the BluetoothService to perform bluetooth connections
+        blueService = new BlueService(this, handler);
+        //BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:71:88");
+        BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:75:67");
+        String deviceName = bluetoothHC06.getName();
+        String deviceAdrress = bluetoothHC06.getAddress();
+        String deviceClass = bluetoothHC06.getBluetoothClass().toString();
+        statusOne.setText("Connecting to : " + deviceName + "  [" + deviceAdrress + "]\n");
+        blueService.connect(bluetoothHC06);
+    }
 
-        public void onProviderEnabled(String provider)
-        {
-            // TODO Auto-generated method stub
-        }
-
-        public void onProviderDisabled(String provider)
-        {
-            // TODO Auto-generated method stub
-        }
-
-        public void onLocationChanged(Location location)
-        {
-            //Update MapCanvasFragment with new location and orientation
-            currentLocation = new LatLng( location.getLatitude(),  location.getLongitude());
-            MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
-            mapFrag.moveCurrentPositionMarker(currentLocation, 0); //do not change bearing, compass sensor drifts....
-
-            //Check if the new location is close to measurement point
-            double newLocLat = location.getLatitude();
-            double newLocLon = location.getLongitude();
-            double shortestDistance = Double.MAX_VALUE;
-            double currentDistance;
-            int measurementPointIndex = 0;
-
-            for(int i = 0; i < layerManager.getNumberOfPoints(); i++)
-            {
-                currentDistance = layerManager.distance(newLocLat, newLocLon, layerManager.getPoint(i).latitude, layerManager.getPoint(i).longitude);
-                if(currentDistance < shortestDistance)
-                {
-                    shortestDistance = currentDistance;
-                    measurementPointIndex = i;
-                }
-            }
-            currentDistance = shortestDistance;
-
-            // Get the dialog fragment
-            OnPointDialogFragment dialogFrag = (OnPointDialogFragment) getFragmentManager().findFragmentByTag("OnPoint");
-            OnPointDialogFragment dlg = OnPointDialogFragment.newInstance();
-            FragmentManager manager = getFragmentManager();
-            FragmentTransaction ft = manager.beginTransaction();
-            if ( currentDistance < 2 )
-            {
-                // Check if the dialog fragment is (already) alive
-                if(dialogFrag != null) // dialog is already alive ;-)
-                {
-                    //Update the dialog's content
-                    dialogFrag.setTitle("Measurment Point in range");
-                    dialogFrag.setContent( "Measurement Point: " + layerManager.getPoint(measurementPointIndex).toString() + "\n" +
-                            "Distance: " + Double.toString(currentDistance) + "\n" +
-                            "Height: " +  Double.toString(location.getAltitude()));
-                }
-                else // Show dialog
-                {
-                    dlg.show(manager, "OnPoint");
-                }
-            }
-            else // If all measurement points are out of range
-            {
-                if(dialogFrag != null) //if the dialog is alive and user has gone out of range
-                {
-                    //ft.remove(dlg); //Kill it http://developer.android.com/reference/android/app/DialogFragment.html
-                    // ft.addToBackStack(null); Do not remember this... shity developersguide google...
-                    dialogFrag.dismiss();
-                }
-            }
-
-            //Update statusbar elements
-            statusTwo.setText("Lat/Lon: " + location.getLatitude() + "/" + location.getLongitude());
-            statusThree.setText("height: " + Double.toString(location.getAltitude()));
-            statusFour.setText("Accuracy: " + location.getAccuracy() + "m");
-            statusFive.setText("Closest MP: " + shortestDistance + "m" );
-        }
-    };
-
-    /**
-     * On-board GPS Status Listener
-     */
-    // http://developer.android.com/reference/android/location/GpsStatus.Listener.html
-    private GpsStatus.Listener gpsStatusListener = new GpsStatus.Listener()
+    // The Handler that gets information back from the BlueService
+    private final Handler handler = new Handler()
     {
-
-        public void onGpsStatusChanged(int event)
+        String line = "";
+        @Override
+        public void handleMessage(Message msg)
         {
-            switch(event)
+            switch (msg.what)
             {
-                case(GpsStatus.GPS_EVENT_FIRST_FIX):
-                    statusOne.setText("GPS FIXED!");
-                    statusOne.setTextColor(Color.GREEN);
+                case MESSAGE_STATE_CHANGE:
+                    Log.i(DEBUGTAG, "MESSAGE_STATE_CHANGE: " + msg.arg1);
+                    switch (msg.arg1)
+                    {
+                        case BlueService.STATE_CONNECTED:
+                            statusOne.setText("[BlueService State]: Connected! \n");
+                            break;
+                        case BlueService.STATE_CONNECTING:
+                            statusOne.setText("[BlueService State]: Connecting... \n");
+                            break;
+                        case BlueService.STATE_LISTEN:
+                            statusOne.setText("[BlueService State]: Listening... \n");
+                        case BlueService.STATE_NONE:
+                            statusOne.setText("[BlueService State]: Idle \n");
+                            break;
+                    }
                     break;
-                case(GpsStatus.GPS_EVENT_SATELLITE_STATUS):
+                case MESSAGE_WRITE:
+                    byte[] writeBuf = (byte[]) msg.obj;
+                    // construct a string from the buffer
+                    String writeMessage = new String(writeBuf);
+                    Log.d(DEBUGTAG, "Msg send: " + writeMessage);
                     break;
-                case(GpsStatus.GPS_EVENT_STARTED):
+                case MESSAGE_READ:
+                    byte[] readBuf = (byte[]) msg.obj;
+                    String readMessage = new String(readBuf, 0, msg.arg1);
+                    if(readMessage.contains("\n"))
+                    {
+                        line = line + readMessage;
+                        if(line.contains("$GPGGA"))
+                        {
+                            GpggaLineParser gpggaData = new GpggaLineParser(line);
+                            if(gpggaData.isValid())
+                            {
+                                double latitude = gpggaData.getLatitude();
+                                double longitude = gpggaData.getLongitude();
+
+                                //Update MapCanvasFragment with new location and orientation
+                                currentLocation = new LatLng( latitude,  longitude);
+                                MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
+                                mapFrag.moveCurrentPositionMarker(currentLocation, 0); //do not change bearing, compass sensor drifts....
+
+                                //statusOne.setText(Double.toString(latitude));
+                                //statusTwo.setText(Double.toString(longitude));
+                                statusOne.setText("Altitude: " + gpggaData.getMslAltitude());
+                                statusTwo.setText("");
+                                statusThree.setText("");
+                                statusFour.setText("Sat in View: " + gpggaData.getSatellitesUsed());
+                                statusFive.setText("pfi: " + gpggaData.getPositionFixIndicator());
+                            }
+                            else
+                            {
+                                statusOne.setText("Waiting for GPS Fix ....");
+                            }
+                        }
+                        line = "";
+                    }
+                    else
+                    {
+                        line = line + readMessage;
+                    }
                     break;
-                case(GpsStatus.GPS_EVENT_STOPPED):
+                case MESSAGE_DEVICE_NAME:
+                    // save the connected device's name
+                    String connectedDeviceName = msg.getData().getString(DEVICE_NAME);
+                    Toast.makeText(getApplicationContext(), "Connected to " + connectedDeviceName, Toast.LENGTH_SHORT).show();
                     break;
-                default:
+                case MESSAGE_TOAST:
+                    Toast.makeText(getApplicationContext(), msg.getData().getString(TOAST),
+                            Toast.LENGTH_SHORT).show();
                     break;
             }
         }
     };
 
-    @Override
-    public void onSensorChanged(SensorEvent event)
+
+    private boolean discoverDevices()
     {
-        if(event.sensor.getType() == Sensor.TYPE_ORIENTATION)
+        Log.d(DEBUGTAG, "Starting Device Discovery");
+        setProgressBarIndeterminateVisibility(true);
+        // If we're already discovering, stop it
+        if (bluetoothAdapter.isDiscovering())
         {
-            // values[0]: Azimuth, angle between the magnetic north direction and the y-axis, around the z-axis (0 to 359). 0=North, 90=East, 180=South, 270=West
-            currentDegree = (int)  event.values[0];
-            //Log.d(DEBUGTAG, "Current Angle: " + Integer.toString(currentDegree) + " degrees");
+            bluetoothAdapter.cancelDiscovery();
         }
+
+        // Discover devices:
+        boolean succesfullStartOfDiscovery = bluetoothAdapter.startDiscovery();
+        return succesfullStartOfDiscovery;
     }
 
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
-    }
-
-    public double getShortestDistance()
+    // Create a BroadcastReceiver for ACTION_FOUND
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver()
     {
-        return currentShortestDistance;
-    }
+        public void onReceive(Context context, Intent intent)
+        {
+            String action = intent.getAction();
+            // When discovery finds a device
+            if (BluetoothDevice.ACTION_FOUND.equals(action))
+            {
+                // Get the BluetoothDevice object from the Intent
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                // Add the name and address to an array adapter to show in a ListView
+                String deviceFound = device.getName() + ": " + device.getAddress();
+                Log.d(DEBUGTAG, deviceFound);
+                discoveredDevices.add(deviceFound);
+                statusOne.append(deviceFound + "\n");
+            }
+            // When discovery is finished do:
+            else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action))
+            {
+                setProgressBarIndeterminateVisibility(false);
 
-    public String getShortestMeasurementPointInfo()
-    {
-        return "";
-    }
+            }
+        }
+    };
+
+
+
 }
