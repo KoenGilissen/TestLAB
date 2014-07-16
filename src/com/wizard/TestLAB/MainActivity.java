@@ -8,11 +8,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
-import android.location.*;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -132,7 +127,7 @@ public class MainActivity extends Activity
             }
         }
         // Check paired devices
-        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices(); //Returns unmodifiable set of BluetoothDevice, or null on error
+        pairedDevices = bluetoothAdapter.getBondedDevices(); //Returns unmodifiable set of BluetoothDevice, or null on error
         /**
         // If there are paired devices
         if(pairedDevices != null) // Could be null if Bluetooth Hardware is not available or turned off!
@@ -183,7 +178,8 @@ public class MainActivity extends Activity
         this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(bluetoothAdapter.enable())
         {
-            setupConnection();
+            //setupConnection();
+            showBluetoothConnectDialogFragment();
         }
     }
 
@@ -326,6 +322,14 @@ public class MainActivity extends Activity
         }
     };
 
+    private void showBluetoothConnectDialogFragment()
+    {
+        BluetoothConnectDialogFragment dlg = BluetoothConnectDialogFragment.newInstance();
+        FragmentManager fm = getFragmentManager();
+        FragmentTransaction ft = fm.beginTransaction();
+        dlg.show(fm, "BluetoothConnect");
+
+    }
 
     private boolean discoverDevices()
     {
