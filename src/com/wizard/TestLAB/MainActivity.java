@@ -20,7 +20,7 @@ import com.google.android.gms.maps.model.LatLng;
 import java.util.ArrayList;
 import java.util.Set;
 
-public class MainActivity extends Activity
+public class MainActivity extends Activity implements IonDialogDoneListener
 {
 
     private static final String DEBUGTAG = "MainActivity";
@@ -37,8 +37,6 @@ public class MainActivity extends Activity
     // Bluetooth...
     private BluetoothAdapter bluetoothAdapter = null;
     private boolean bluetoothAvailable;
-    private Set<BluetoothDevice> pairedDevices;
-    private ArrayList<String> discoveredDevices  = null;
     private BlueService blueService  = null;
 
     // Key names received from the BlueService Handler
@@ -93,14 +91,6 @@ public class MainActivity extends Activity
             mcf.addMarker(layerManager.getPoint(index), "0x0"+Integer.toHexString(index).toUpperCase(), layerManager.getPoint(index).toString(), index);
         }
 
-        //Intialize global activity variables
-        discoveredDevices = new ArrayList<String>();
-
-        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        registerReceiver(broadcastReceiver, filter); // Don't forget to unregister during onDestroy
-        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        this.registerReceiver(broadcastReceiver, filter);
-
         //Test if Bluetooth hardware is available on this device
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         if(bluetoothAdapter == null)
@@ -126,30 +116,6 @@ public class MainActivity extends Activity
                 startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
             }
         }
-        // Check paired devices
-        pairedDevices = bluetoothAdapter.getBondedDevices(); //Returns unmodifiable set of BluetoothDevice, or null on error
-        /**
-        // If there are paired devices
-        if(pairedDevices != null) // Could be null if Bluetooth Hardware is not available or turned off!
-        {
-            if (pairedDevices.size() > 0)
-            {
-                mainTextView.setText("Found Paired devices: " + Integer.toString(pairedDevices.size()) + "\n");
-                //TODO do something I guess...
-                for(BluetoothDevice device : pairedDevices)
-                {
-                    mainTextView.append(device.getName() + " : " + device.getAddress() + " \n");
-                }
-            }
-        }
-         // Bluetooth device discovery
-         if(bluetoothAdapter.isEnabled())
-         {
-         Log.d(DEBUGTAG, "Starting device discovery...");
-         discoverDevices();
-         }
-         **/
-
     }
 
     @Override
@@ -178,7 +144,6 @@ public class MainActivity extends Activity
         this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if(bluetoothAdapter.enable())
         {
-            //setupConnection();
             showBluetoothConnectDialogFragment();
         }
     }
@@ -199,7 +164,7 @@ public class MainActivity extends Activity
             {
                 if(DEBUGGINGMODE)
                     Log.d(DEBUGTAG, "Bluetooth Enabled!");
-                setupConnection();
+                showBluetoothConnectDialogFragment();
             }
         }
 
@@ -211,10 +176,6 @@ public class MainActivity extends Activity
         super.onDestroy();
         if(DEBUGGINGMODE)
             Log.d(DEBUGTAG,"onDestroy():");
-        //kill off broadcast receiver
-        if(DEBUGGINGMODE)
-            Log.d(DEBUGTAG, "Killing Broadcast receivers");
-        unregisterReceiver(broadcastReceiver);
         //Kill bluetooth service
         if(DEBUGGINGMODE)
             Log.d(DEBUGTAG, "Killing bluetooth service");
@@ -224,18 +185,18 @@ public class MainActivity extends Activity
         }
     }
 
-    private void setupConnection()
+    private void setupConnection(BluetoothDevice device)
     {
 
         // Initialize the BluetoothService to perform bluetooth connections
         blueService = new BlueService(this, handler);
         //BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:71:88");
-        BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:75:67");
-        String deviceName = bluetoothHC06.getName();
-        String deviceAdrress = bluetoothHC06.getAddress();
-        String deviceClass = bluetoothHC06.getBluetoothClass().toString();
+        //BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:75:67");
+        String deviceName = device.getName();
+        String deviceAdrress = device.getAddress();
+        String deviceClass = device.getBluetoothClass().toString();
         statusOne.setText("Connecting to : " + deviceName + "  [" + deviceAdrress + "]\n");
-        blueService.connect(bluetoothHC06);
+        blueService.connect(device);
     }
 
     // The Handler that gets information back from the BlueService
@@ -328,50 +289,25 @@ public class MainActivity extends Activity
         FragmentManager fm = getFragmentManager();
         FragmentTransaction ft = fm.beginTransaction();
         dlg.show(fm, "BluetoothConnect");
+    }
+
+    @Override
+    public void onDialogDone(String tag, boolean cancelled, String message) {
 
     }
 
-    private boolean discoverDevices()
+    @Override
+    public void onDialogDone(String tag, boolean cancelled, BluetoothDevice bluetoothDevice)
     {
-        Log.d(DEBUGTAG, "Starting Device Discovery");
-        setProgressBarIndeterminateVisibility(true);
-        // If we're already discovering, stop it
-        if (bluetoothAdapter.isDiscovering())
+        if(tag.equals("BluetoothConnect"))
         {
-            bluetoothAdapter.cancelDiscovery();
+            if(!cancelled && bluetoothDevice != null)
+            {
+                if(DEBUGGINGMODE)
+                    Log.d(DEBUGTAG, "Connecting to " + bluetoothDevice.getName() + " - " + bluetoothDevice.getAddress());
+                setupConnection(bluetoothDevice);
+            }
         }
 
-        // Discover devices:
-        boolean succesfullStartOfDiscovery = bluetoothAdapter.startDiscovery();
-        return succesfullStartOfDiscovery;
     }
-
-    // Create a BroadcastReceiver for ACTION_FOUND
-    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver()
-    {
-        public void onReceive(Context context, Intent intent)
-        {
-            String action = intent.getAction();
-            // When discovery finds a device
-            if (BluetoothDevice.ACTION_FOUND.equals(action))
-            {
-                // Get the BluetoothDevice object from the Intent
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                // Add the name and address to an array adapter to show in a ListView
-                String deviceFound = device.getName() + ": " + device.getAddress();
-                Log.d(DEBUGTAG, deviceFound);
-                discoveredDevices.add(deviceFound);
-                statusOne.append(deviceFound + "\n");
-            }
-            // When discovery is finished do:
-            else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action))
-            {
-                setProgressBarIndeterminateVisibility(false);
-
-            }
-        }
-    };
-
-
-
 }

@@ -4,20 +4,15 @@ import android.app.Activity;
 import android.app.DialogFragment;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.content.DialogInterface;
+import android.content.*;
 import android.os.Bundle;
-import android.os.Parcelable;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
-import android.widget.TextView;
+import android.widget.*;
 
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 
 /**
  * Created by Koen on 06-Jul-14.
@@ -27,12 +22,22 @@ public class BluetoothConnectDialogFragment extends DialogFragment
     private final static String DEBUGTAG = "BluetoothConnectDialogFragment";
     private final static boolean DEBUGMODE = true;
 
-    private BluetoothAdapter bluetoothAdapter;
-    private Set<BluetoothDevice> pairedDevices;
+    private IonDialogDoneListener onDialogDoneListener;
 
-    private TextView pairedDevicesTextView;
-    private ListView listViewPairedDevices;
-    private final static String NOPAIREDDEVICES = "No Paired Devices!";
+    private BluetoothAdapter bluetoothAdapter;
+    private ArrayList<BluetoothDevice> discoveredDevices;
+    private ArrayList<String> stringArrayListDiscoveredDevices;
+
+    private Button startDeviceDiscoveryButton;
+    private ProgressBar progressBarDeviceDiscovery;
+    private TextView discoveredDevicesTextView;
+    private ListView listViewDiscoveredDevices;
+    private final static String NODISCOVEREDDEVICES = "No Devices Found!";
+    private Button connectButton;
+    private Button cancelButton;
+
+    private BluetoothDevice selectedDevice;
+
 
     public static BluetoothConnectDialogFragment newInstance()
     {
@@ -52,7 +57,9 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         // can test if you have a well-behaved activity.
         try
         {
-            IonDialogDoneListener test = (IonDialogDoneListener) activity;
+            if(DEBUGMODE)
+                Log.d(DEBUGTAG, "onAttach()");
+            onDialogDoneListener = (IonDialogDoneListener) activity;
         }
         catch (ClassCastException cce)
         {
@@ -68,7 +75,18 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         super.onCreate(savedInstanceState);
         setStyle(STYLE_NORMAL, android.R.style.Theme_Holo_Dialog);
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        pairedDevices = bluetoothAdapter.getBondedDevices();
+        stringArrayListDiscoveredDevices = new ArrayList<String>();
+        discoveredDevices = new ArrayList<BluetoothDevice>();
+        selectedDevice = null;
+
+        // Register intent filters and broadcast receivers
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        getActivity().registerReceiver(broadcastReceiver, filter); // Don't forget to unregister during onDestroy
+        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        getActivity().registerReceiver(broadcastReceiver, filter);
+        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        getActivity().registerReceiver(broadcastReceiver, filter);
+
 
     }
 
@@ -78,17 +96,21 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         super.onCreateView(inflater, container, savedInstanceState);
         getDialog().setTitle("Bluetooth Connection");
         View v = inflater.inflate(R.layout.bluetooth_connect_dialog_fragment, container);
+        startDeviceDiscoveryButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_discover_button);
+        progressBarDeviceDiscovery = (ProgressBar) v.findViewById(R.id.bluetoothconnection_dlg_frag_progressBar_discovery);
+        progressBarDeviceDiscovery.setMax(100);
+        progressBarDeviceDiscovery.setProgress(0);
+        discoveredDevicesTextView = (TextView) v.findViewById(R.id.bluetoothconnection_dlg_frag_textView_discovered_devices);
+        discoveredDevicesTextView.setText("Devices found in range: ");
+        listViewDiscoveredDevices = (ListView) v.findViewById(R.id.bluetoothconnection_dlg_frag_listView_discovered_devices);
+        listViewDiscoveredDevices.setChoiceMode(AbsListView.CHOICE_MODE_SINGLE);
+        connectButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_connect_button);
+        cancelButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_cancel_button);
 
-        pairedDevicesTextView = (TextView) v.findViewById(R.id.textView_paired_devices);
-        // List view
-        listViewPairedDevices = (ListView) v.findViewById(R.id.listView_dlgfrag_paired_devices);
-        // Only ONE device can be selected...
-        // Define the choice behavior for the view:
-        // Does not trigger the event ()
-        listViewPairedDevices.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        pairedDevicesTextView = (TextView) v.findViewById(R.id.textView_paired_devices);
-        pairedDevicesTextView.setText("Paired Devices:");
-        this.populatePairedDevicesList(pairedDevices);
+        listViewDiscoveredDevices.setOnItemClickListener(onListItemClickListener);
+        startDeviceDiscoveryButton.setOnClickListener(buttonClicklistener);
+        connectButton.setOnClickListener(buttonClicklistener);
+        cancelButton.setOnClickListener(buttonClicklistener);
         return v;
     }
 
@@ -146,36 +168,109 @@ public class BluetoothConnectDialogFragment extends DialogFragment
     }
 
     @Override
-    public void onDestroy() {
+    public void onDestroy()
+    {
         super.onDestroy();
+        getActivity().unregisterReceiver(broadcastReceiver);
     }
 
-    /**
-     * Method to populate the list view
-     * @param pairedDevices the list of paired device to populate the listview with
-     */
-    private void populatePairedDevicesList(Set<BluetoothDevice> pairedDevices)
+    private void populateDiscoveredDevicesList(ArrayList<BluetoothDevice> devicesFoundList)
     {
-        ArrayList<String> pd = new ArrayList<String>();
-        if(pairedDevices.size() == 0)
+
+        if(devicesFoundList.isEmpty())
         {
-            // Display 1 entry to list as msg to user
-            pd.add(NOPAIREDDEVICES);
-            // Nothing to select
-            listViewPairedDevices.setChoiceMode(ListView.CHOICE_MODE_NONE);
+            stringArrayListDiscoveredDevices.add(NODISCOVEREDDEVICES);
+            listViewDiscoveredDevices.setChoiceMode(ListView.CHOICE_MODE_NONE);
         }
         else
         {
-            for(BluetoothDevice device : pairedDevices)
+            for(BluetoothDevice device : devicesFoundList)
             {
-                pd.add(device.getName() +"\n"+ device.getAddress());
+                stringArrayListDiscoveredDevices.add(device.getName() + "\n" + device.getAddress());
             }
         }
-        pd.add("another device");
-        pd.add("yet another device");
-
-        //TODO change list layout
-        ArrayAdapter<String> pairedDevicesList = new ArrayAdapter<String>(getActivity(), android.R.layout.simple_list_item_activated_1, pd);
-        listViewPairedDevices.setAdapter(pairedDevicesList);
+        ArrayAdapter<String> discoveredDevicesList = new ArrayAdapter<String>(getActivity(), android.R.layout.simple_list_item_activated_1, stringArrayListDiscoveredDevices);
+        listViewDiscoveredDevices.setAdapter(discoveredDevicesList);
     }
+
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent)
+        {
+            String action = intent.getAction();
+            if(action.equals(BluetoothDevice.ACTION_FOUND))
+            {
+                BluetoothDevice btD = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                discoveredDevices.add(btD);
+                progressBarDeviceDiscovery.setProgress(progressBarDeviceDiscovery.getProgress() + 10 );
+            }
+            else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_FINISHED))
+            {
+                progressBarDeviceDiscovery.setProgress(progressBarDeviceDiscovery.getMax());
+                populateDiscoveredDevicesList(discoveredDevices);
+
+            }
+            else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_STARTED))
+            {
+
+            }
+        }
+    };
+
+    private boolean discoverDevices()
+    {
+        Log.d(DEBUGTAG, "Starting Device Discovery");
+        // If we're already discovering, stop it
+        if (bluetoothAdapter.isDiscovering())
+        {
+            bluetoothAdapter.cancelDiscovery();
+        }
+
+        progressBarDeviceDiscovery.setProgress(0);
+        stringArrayListDiscoveredDevices.clear();
+        discoveredDevices.clear();
+        listViewDiscoveredDevices.setAdapter(null);
+
+        // Discover devices:
+        boolean succesfullStartOfDiscovery = bluetoothAdapter.startDiscovery();
+        return succesfullStartOfDiscovery;
+    }
+
+    private View.OnClickListener buttonClicklistener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v)
+        {
+            switch(v.getId())
+            {
+                case(R.id.bluetoothconnection_dlg_frag_discover_button):
+                    discoverDevices();
+                    break;
+                case(R.id.bluetoothconnection_dlg_frag_connect_button):
+                    onDialogDoneListener.onDialogDone(getTag(), false, selectedDevice);
+                    getDialog().dismiss();
+                    break;
+                case(R.id.bluetoothconnection_dlg_frag_cancel_button):
+                    onDialogDoneListener.onDialogDone(getTag(), true, (BluetoothDevice) null); // Not some ambiguous now are we ? :p
+                    getDialog().dismiss();
+                    break;
+                default:
+                    break;
+            }
+
+        }
+    };
+
+    private AdapterView.OnItemClickListener onListItemClickListener = new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View view, int position, long id)
+        {
+            if(position <= discoveredDevices.size())
+            {
+                selectedDevice = discoveredDevices.get(position);
+                if(DEBUGMODE)
+                    Log.d(DEBUGTAG, "selected: " + selectedDevice.getName() + " - " + selectedDevice.getAddress());
+            }
+
+        }
+    };
 }

@@ -1,6 +1,6 @@
 package com.wizard.TestLAB;
 
-import java.io.File;
+import android.bluetooth.BluetoothDevice;
 
 /**
  * Interface for Dialog Fragment callbacks
@@ -10,5 +10,6 @@ import java.io.File;
 public interface IonDialogDoneListener
 {
     void onDialogDone(String tag, boolean cancelled, String message);
+    void onDialogDone(String tag, boolean cancelled, BluetoothDevice bluetoothDevice);
 
 }

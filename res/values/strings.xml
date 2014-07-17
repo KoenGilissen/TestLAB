@@ -2,4 +2,10 @@
 <resources>
     <string name="app_name">TestLAB</string>
     <string name="welcom_text">Hallo Wizard Welcom Back!</string>
+
+    <!--- Dialog Fragment Bluetooth Connect -->
+    <string name="button_start_device_discovery">Start Discovery</string>
+    <string name="button_connect_to_device">Connect</string>
+    <string name="button_cancel">Cancel</string>
+
 </resources>
