@@ -1,12 +1,12 @@
 package com.wizard.TestLAB;
 
-import android.app.*;
+import android.app.Activity;
+import android.app.Fragment;
+import android.app.FragmentManager;
+import android.app.FragmentTransaction;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -18,7 +18,6 @@ import android.widget.Toast;
 import com.google.android.gms.maps.model.LatLng;
 
 import java.util.ArrayList;
-import java.util.Set;
 
 public class MainActivity extends Activity implements IonDialogDoneListener
 {
@@ -32,12 +31,13 @@ public class MainActivity extends Activity implements IonDialogDoneListener
     private TextView statusFive;
 
     private LatLng currentLocation;
+    private LatLng previousLocation;
     private LayerManager layerManager;
 
     // Bluetooth...
-    private BluetoothAdapter bluetoothAdapter = null;
+    private BluetoothAdapter bluetoothAdapter;
     private boolean bluetoothAvailable;
-    private BlueService blueService  = null;
+    private BlueService blueService;
 
     // Key names received from the BlueService Handler
     public static final String DEVICE_NAME = "device_name";
@@ -53,7 +53,6 @@ public class MainActivity extends Activity implements IonDialogDoneListener
     public static final int MESSAGE_WRITE = 3;
     public static final int MESSAGE_DEVICE_NAME = 4;
     public static final int MESSAGE_TOAST = 5;
-
 
     /**
      * Called when the activity is first created.
@@ -74,13 +73,13 @@ public class MainActivity extends Activity implements IonDialogDoneListener
         }
 
         statusOne = (TextView) findViewById(R.id.status_one);
-        statusOne.setText("No GPS FIX!");
-        statusOne.setTextColor(Color.RED);
-
         statusTwo = (TextView) findViewById(R.id.status_two);
         statusThree = (TextView) findViewById(R.id.status_three);
         statusFour = (TextView) findViewById(R.id.status_four);
         statusFive = (TextView) findViewById(R.id.status_five);
+
+        previousLocation = new LatLng(50.879668, 5.309296); // Alken Belgium
+        currentLocation = new LatLng(50.879668, 5.309296); // Alken Belgium
 
         layerManager = new LayerManager();
         //dirty cast ;-)
@@ -90,6 +89,7 @@ public class MainActivity extends Activity implements IonDialogDoneListener
         {
             mcf.addMarker(layerManager.getPoint(index), "0x0"+Integer.toHexString(index).toUpperCase(), layerManager.getPoint(index).toString(), index);
         }
+
 
         //Test if Bluetooth hardware is available on this device
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -163,7 +163,7 @@ public class MainActivity extends Activity implements IonDialogDoneListener
             if(resultCode == RESULT_OK)
             {
                 if(DEBUGGINGMODE)
-                    Log.d(DEBUGTAG, "Bluetooth Enabled!");
+                    Log.d(DEBUGTAG, "Launching Bluetooth Connection Dialog Fragment");
                 showBluetoothConnectDialogFragment();
             }
         }
@@ -213,15 +213,19 @@ public class MainActivity extends Activity implements IonDialogDoneListener
                     switch (msg.arg1)
                     {
                         case BlueService.STATE_CONNECTED:
-                            statusOne.setText("[BlueService State]: Connected! \n");
+                            statusOne.setTextColor(Color.LTGRAY);
+                            statusOne.setText("Connected!");
                             break;
                         case BlueService.STATE_CONNECTING:
-                            statusOne.setText("[BlueService State]: Connecting... \n");
+                            statusOne.setTextColor(Color.GREEN);
+                            statusOne.setText("Connecting...");
                             break;
                         case BlueService.STATE_LISTEN:
-                            statusOne.setText("[BlueService State]: Listening... \n");
+                            statusOne.setTextColor(Color.BLUE);
+                            statusOne.setText("Listening...");
                         case BlueService.STATE_NONE:
-                            statusOne.setText("[BlueService State]: Idle \n");
+                            statusOne.setTextColor(Color.RED);
+                            statusOne.setText("Disconnected");
                             break;
                     }
                     break;
@@ -244,19 +248,23 @@ public class MainActivity extends Activity implements IonDialogDoneListener
                             {
                                 double latitude = gpggaData.getLatitude();
                                 double longitude = gpggaData.getLongitude();
-
                                 //Update MapCanvasFragment with new location and orientation
+                                previousLocation = currentLocation;
                                 currentLocation = new LatLng( latitude,  longitude);
+                                double delta = gpggaData.distance(currentLocation.latitude, currentLocation.longitude, previousLocation.latitude, previousLocation.longitude);
+
                                 MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
                                 mapFrag.moveCurrentPositionMarker(currentLocation, 0); //do not change bearing, compass sensor drifts....
 
-                                //statusOne.setText(Double.toString(latitude));
-                                //statusTwo.setText(Double.toString(longitude));
-                                statusOne.setText("Altitude: " + gpggaData.getMslAltitude());
-                                statusTwo.setText("");
-                                statusThree.setText("");
-                                statusFour.setText("Sat in View: " + gpggaData.getSatellitesUsed());
-                                statusFive.setText("pfi: " + gpggaData.getPositionFixIndicator());
+                                //To see gps drift
+                                //mapFrag.addCurrentPositionMarkerToMap(currentLocation);
+
+                                statusOne.setText("Altitude: " + gpggaData.getMslAltitude() + gpggaData.getUnitAltitude());
+                                statusTwo.setText(Double.toString(gpggaData.getLatitude()) + gpggaData.getNorthSouthIndicator());
+                                statusThree.setText(Double.toString(longitude) + gpggaData.getEastWestIndicator());
+                                statusFour.setText("Satellites: " + Integer.toString(gpggaData.getSatellitesUsed()));
+                                statusFive.setText("Delta: " + Double.toString(delta) + " m");
+
                             }
                             else
                             {
@@ -285,10 +293,23 @@ public class MainActivity extends Activity implements IonDialogDoneListener
 
     private void showBluetoothConnectDialogFragment()
     {
-        BluetoothConnectDialogFragment dlg = BluetoothConnectDialogFragment.newInstance();
+        if(DEBUGGINGMODE)
+            Log.d(DEBUGTAG, "showBluetoothConnectDialogFragment()");
         FragmentManager fm = getFragmentManager();
-        FragmentTransaction ft = fm.beginTransaction();
-        dlg.show(fm, "BluetoothConnect");
+        Fragment frag = fm.findFragmentByTag("BluetoothConnect");
+        if(frag == null )
+        {
+            if(DEBUGGINGMODE)
+                Log.d(DEBUGTAG, "Launching Bluetooth connection dialog fragment");
+            BluetoothConnectDialogFragment dlg = BluetoothConnectDialogFragment.newInstance();
+            FragmentTransaction ft = fm.beginTransaction();
+            dlg.show(fm, "BluetoothConnect");
+        }
+        else
+        {
+            if(DEBUGGINGMODE)
+                Log.d(DEBUGTAG, "Bluetooth connection dialog fragment ALREADY LAUNCHED!");
+        }
     }
 
     @Override
@@ -301,6 +322,7 @@ public class MainActivity extends Activity implements IonDialogDoneListener
     {
         if(tag.equals("BluetoothConnect"))
         {
+            FragmentManager fm = getFragmentManager();
             if(!cancelled && bluetoothDevice != null)
             {
                 if(DEBUGGINGMODE)
@@ -310,4 +332,5 @@ public class MainActivity extends Activity implements IonDialogDoneListener
         }
 
     }
+
 }

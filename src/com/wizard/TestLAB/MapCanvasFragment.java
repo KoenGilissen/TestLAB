@@ -5,6 +5,7 @@ import android.location.Location;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.*;
+import android.widget.ListView;
 import android.widget.Toast;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -174,6 +175,13 @@ public class MapCanvasFragment extends MapFragment
         mOptions.icon(BitmapDescriptorFactory.defaultMarker(resolveColorOfMarker(color)));
         mOptions.position(position);
         map.addMarker(mOptions);
+    }
+
+    public void addCurrentPositionMarkerToMap(LatLng location)
+    {
+        Marker marker = map.addMarker(new MarkerOptions().position(location));
+        marker.setIcon(BitmapDescriptorFactory.fromResource(R.drawable.ic_map_current_position_arrow_small));
+        marker.setAnchor(0.5f, 0.5f);
     }
 
     public float resolveColorOfMarker(int color)

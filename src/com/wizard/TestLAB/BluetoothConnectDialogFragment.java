@@ -16,27 +16,34 @@ import java.util.ArrayList;
 
 /**
  * Created by Koen on 06-Jul-14.
+ *
+ * Dialog Fragment to manage the connection to the position hardware via bluetooth
+ *
  */
 public class BluetoothConnectDialogFragment extends DialogFragment
 {
-    private final static String DEBUGTAG = "BluetoothConnectDialogFragment";
-    private final static boolean DEBUGMODE = true;
+    private static final  String DEBUGTAG = "BluetoothConnectDialogFragment";
+    private static final boolean DEBUGMODE = true;
 
     private IonDialogDoneListener onDialogDoneListener;
 
     private BluetoothAdapter bluetoothAdapter;
-    private ArrayList<BluetoothDevice> discoveredDevices;
-    private ArrayList<String> stringArrayListDiscoveredDevices;
+    private ArrayList<BluetoothDevice> bluetoothDevices;
+    private ArrayList<String> stringArrayListBluetoothDevices;
 
-    private Button startDeviceDiscoveryButton;
+    private ImageButton deviceDiscoveryImageButton;
     private ProgressBar progressBarDeviceDiscovery;
-    private TextView discoveredDevicesTextView;
+    private TextView listLabelDevicesTextView;
     private ListView listViewDiscoveredDevices;
-    private final static String NODISCOVEREDDEVICES = "No Devices Found!";
     private Button connectButton;
     private Button cancelButton;
 
     private BluetoothDevice selectedDevice;
+    private SharedPreferences preferences;
+    private static final String PREF_DEVICE_NAME = "PreviousDeviceName";
+    private static final String PREF_DEVICE_MAC = "PrevDeviceMAC";
+    private static final String PREF_DEVICE_NAME_DEFAULT = "No Device Found!";
+    private static final String PREF_DEVICE_MAC_DEFAULT = "";
 
 
     public static BluetoothConnectDialogFragment newInstance()
@@ -52,9 +59,8 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         super.onAttach(activity);
         // If the activity you're being attached to has
         // not implemented the IonDialogDoneListener
-        // interface, the following line will throw a
-        // ClassCastException. This is the earliest you
-        // can test if you have a well-behaved activity.
+        // interface, the following line will throw a ClassCastException.
+        // Basically is it a well-behaved activity?
         try
         {
             if(DEBUGMODE)
@@ -75,8 +81,8 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         super.onCreate(savedInstanceState);
         setStyle(STYLE_NORMAL, android.R.style.Theme_Holo_Dialog);
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        stringArrayListDiscoveredDevices = new ArrayList<String>();
-        discoveredDevices = new ArrayList<BluetoothDevice>();
+        stringArrayListBluetoothDevices = new ArrayList<String>();
+        bluetoothDevices = new ArrayList<BluetoothDevice>();
         selectedDevice = null;
 
         // Register intent filters and broadcast receivers
@@ -85,8 +91,7 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
         getActivity().registerReceiver(broadcastReceiver, filter);
         filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
-        getActivity().registerReceiver(broadcastReceiver, filter);
-
+        preferences = getActivity().getPreferences(Context.MODE_PRIVATE);
 
     }
 
@@ -94,23 +99,49 @@ public class BluetoothConnectDialogFragment extends DialogFragment
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState)
     {
         super.onCreateView(inflater, container, savedInstanceState);
-        getDialog().setTitle("Bluetooth Connection");
+        // Set Dialog title
+        getDialog().setTitle(getResources().getString(R.string.bluetooth_connection_dialog_fragment_title));
+        // Create a view object from layout XML
         View v = inflater.inflate(R.layout.bluetooth_connect_dialog_fragment, container);
-        startDeviceDiscoveryButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_discover_button);
+        // Get GUI elements
+        deviceDiscoveryImageButton = (ImageButton) v.findViewById(R.id.bluetoothconnection_dlg_frag_imageButton_device_discovery);
+
         progressBarDeviceDiscovery = (ProgressBar) v.findViewById(R.id.bluetoothconnection_dlg_frag_progressBar_discovery);
         progressBarDeviceDiscovery.setMax(100);
         progressBarDeviceDiscovery.setProgress(0);
-        discoveredDevicesTextView = (TextView) v.findViewById(R.id.bluetoothconnection_dlg_frag_textView_discovered_devices);
-        discoveredDevicesTextView.setText("Devices found in range: ");
-        listViewDiscoveredDevices = (ListView) v.findViewById(R.id.bluetoothconnection_dlg_frag_listView_discovered_devices);
+
+        listViewDiscoveredDevices = (ListView) v.findViewById(R.id.bluetoothconnection_dlg_frag_listView_devices);
         listViewDiscoveredDevices.setChoiceMode(AbsListView.CHOICE_MODE_SINGLE);
+
         connectButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_connect_button);
         cancelButton = (Button) v.findViewById(R.id.bluetoothconnection_dlg_frag_cancel_button);
 
+        // Register event listeners...
         listViewDiscoveredDevices.setOnItemClickListener(onListItemClickListener);
-        startDeviceDiscoveryButton.setOnClickListener(buttonClicklistener);
+        deviceDiscoveryImageButton.setOnClickListener(buttonClicklistener);
         connectButton.setOnClickListener(buttonClicklistener);
         cancelButton.setOnClickListener(buttonClicklistener);
+
+
+        // Get last used device from SharedPreferences
+        listLabelDevicesTextView = (TextView) v.findViewById(R.id.bluetoothconnection_dlg_frag_textView_devices_list);
+        listLabelDevicesTextView.setText("Previously used device: ");
+        String prevDeviceName = this.loadPreviousDeviceName();
+        String prevDeviceMac = this.loadPreviousDeviceMAC();
+        // If the stored device mac is not equal to default value AND the MAC is valid
+        if(!prevDeviceMac.equals(PREF_DEVICE_MAC_DEFAULT) && BluetoothAdapter.checkBluetoothAddress(prevDeviceMac))
+        {
+            if(DEBUGMODE)
+                Log.d(DEBUGTAG, "Loaded " + prevDeviceName + " from SharedPreferences");
+            BluetoothDevice preferedDevice = bluetoothAdapter.getRemoteDevice(prevDeviceMac);
+            bluetoothDevices.add(preferedDevice);
+            populateDiscoveredDevicesList(bluetoothDevices);
+        }
+        else
+        {
+            if(DEBUGMODE)
+                Log.d(DEBUGTAG, "Device Loaded From user Preferences is invalid or non-existing");
+        }
         return v;
     }
 
@@ -174,52 +205,78 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         getActivity().unregisterReceiver(broadcastReceiver);
     }
 
+    /**
+     * Method to populate the ListView with the discovered (Bluetooth) devices found
+     * @param devicesFoundList (BluetootDevice) Arraylist of discovered bluetooth devices
+     */
     private void populateDiscoveredDevicesList(ArrayList<BluetoothDevice> devicesFoundList)
     {
-
+        // if there are no devices found:
         if(devicesFoundList.isEmpty())
         {
-            stringArrayListDiscoveredDevices.add(NODISCOVEREDDEVICES);
+            // add item in list to notify the user of the fact that no devices where found
+            stringArrayListBluetoothDevices.add(getResources().getString(R.string.bluetooth_connection_dialog_fragment_no_devices_discovered));
+            // Make shure the user cannot select the item...
             listViewDiscoveredDevices.setChoiceMode(ListView.CHOICE_MODE_NONE);
         }
-        else
+        else // If there are device found:
         {
+            // Extract the (String) name and MAC to add to the ListView
             for(BluetoothDevice device : devicesFoundList)
             {
-                stringArrayListDiscoveredDevices.add(device.getName() + "\n" + device.getAddress());
+                stringArrayListBluetoothDevices.add(device.getName() + " [" + device.getAddress() + "]");
             }
         }
-        ArrayAdapter<String> discoveredDevicesList = new ArrayAdapter<String>(getActivity(), android.R.layout.simple_list_item_activated_1, stringArrayListDiscoveredDevices);
+        // Create a new arrayAdapter object to populate the listview from the arraylist of strings containing the bluetooth devices
+        ArrayAdapter<String> discoveredDevicesList = new ArrayAdapter<String>(getActivity(), android.R.layout.simple_list_item_activated_1, stringArrayListBluetoothDevices);
+        // Set the adapter of the listview
         listViewDiscoveredDevices.setAdapter(discoveredDevicesList);
     }
 
+
+    /**
+     *  Anonymous Inner Class of type Broadcast Receiver
+     *  This boradcast receiver is setup to receive Bluetooth actions
+     */
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent)
         {
             String action = intent.getAction();
+            // if a bluetooth device is discovered
             if(action.equals(BluetoothDevice.ACTION_FOUND))
             {
+                // construct the bluetoothdevice object
                 BluetoothDevice btD = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                discoveredDevices.add(btD);
-                progressBarDeviceDiscovery.setProgress(progressBarDeviceDiscovery.getProgress() + 10 );
+                // Add is to the ArrayList of BluetoothDevices
+                bluetoothDevices.add(btD);
+                // Increment The GUI Progress bar
+                if(progressBarDeviceDiscovery.getProgress() + 10 < progressBarDeviceDiscovery.getMax())
+                    progressBarDeviceDiscovery.setProgress(progressBarDeviceDiscovery.getProgress() + 10 );
             }
+            // If the discovery has finished
             else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_FINISHED))
             {
+                // Set progress of progressbar to MAX and populate the listview with the discovered devices
                 progressBarDeviceDiscovery.setProgress(progressBarDeviceDiscovery.getMax());
-                populateDiscoveredDevicesList(discoveredDevices);
+                populateDiscoveredDevicesList(bluetoothDevices);
 
             }
             else if (action.equals(BluetoothAdapter.ACTION_DISCOVERY_STARTED))
             {
-
+                //do nothing
             }
         }
     };
 
+    /**
+     * Method to start device discovery
+     * @return (boolean) true if discovery started successful | false if unsuccessful discovery start
+     */
     private boolean discoverDevices()
     {
         Log.d(DEBUGTAG, "Starting Device Discovery");
+        listLabelDevicesTextView.setText("Devices found in range: ");
         // If we're already discovering, stop it
         if (bluetoothAdapter.isDiscovering())
         {
@@ -227,8 +284,8 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         }
 
         progressBarDeviceDiscovery.setProgress(0);
-        stringArrayListDiscoveredDevices.clear();
-        discoveredDevices.clear();
+        stringArrayListBluetoothDevices.clear();
+        bluetoothDevices.clear();
         listViewDiscoveredDevices.setAdapter(null);
 
         // Discover devices:
@@ -236,17 +293,21 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         return succesfullStartOfDiscovery;
     }
 
+    /**
+     * Event Listener to listen to the button clicks
+     */
     private View.OnClickListener buttonClicklistener = new View.OnClickListener() {
         @Override
         public void onClick(View v)
         {
             switch(v.getId())
             {
-                case(R.id.bluetoothconnection_dlg_frag_discover_button):
+                case(R.id.bluetoothconnection_dlg_frag_imageButton_device_discovery):
                     discoverDevices();
                     break;
                 case(R.id.bluetoothconnection_dlg_frag_connect_button):
                     onDialogDoneListener.onDialogDone(getTag(), false, selectedDevice);
+                    savePreviousDevice(selectedDevice);
                     getDialog().dismiss();
                     break;
                 case(R.id.bluetoothconnection_dlg_frag_cancel_button):
@@ -260,17 +321,54 @@ public class BluetoothConnectDialogFragment extends DialogFragment
         }
     };
 
+    /**
+     *  Event listener to listen to listview item clicks
+     */
     private AdapterView.OnItemClickListener onListItemClickListener = new AdapterView.OnItemClickListener() {
         @Override
         public void onItemClick(AdapterView<?> parent, View view, int position, long id)
         {
-            if(position <= discoveredDevices.size())
+            if(position <= bluetoothDevices.size())
             {
-                selectedDevice = discoveredDevices.get(position);
+                selectedDevice = bluetoothDevices.get(position);
                 if(DEBUGMODE)
                     Log.d(DEBUGTAG, "selected: " + selectedDevice.getName() + " - " + selectedDevice.getAddress());
             }
 
         }
     };
+
+    /**
+     * Method to load previously used bluetooth device name from shared preferences
+     * @return (String) the device name or default value
+     */
+    private String loadPreviousDeviceName()
+    {
+        String deviceName = preferences.getString(PREF_DEVICE_NAME, PREF_DEVICE_NAME_DEFAULT);
+        return deviceName;
+    }
+
+    /**
+     * Method to load previously used bluetooth device MAC address from shared preferences
+     * @return (String) the device MAC address or default value
+     */
+    private String loadPreviousDeviceMAC()
+    {
+        String mac = preferences.getString(PREF_DEVICE_MAC, PREF_DEVICE_MAC_DEFAULT);
+        return mac;
+    }
+
+    /**
+     * Method to store (persistent) the selected device in shared preferences
+     * @param bluetoothDevice The device to store 
+     */
+    private void savePreviousDevice(BluetoothDevice bluetoothDevice)
+    {
+        if(DEBUGMODE)
+            Log.d(DEBUGTAG, "Saving device: " + bluetoothDevice.toString());
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putString(PREF_DEVICE_NAME, bluetoothDevice.getName());
+        editor.putString(PREF_DEVICE_MAC, bluetoothDevice.getAddress());
+        editor.commit();
+    }
 }

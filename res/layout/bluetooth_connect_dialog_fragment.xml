@@ -9,33 +9,35 @@
             android:orientation="horizontal"
             android:layout_width="fill_parent"
             android:layout_height="wrap_content">
-        <Button
+
+        <ImageButton
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/button_start_device_discovery"
-                android:id="@+id/bluetoothconnection_dlg_frag_discover_button"
-                android:layout_gravity="center_vertical"
-                android:clickable="true"
-                android:enabled="true"/>
+                android:id="@+id/bluetoothconnection_dlg_frag_imageButton_device_discovery"
+                android:src="@drawable/ic_action_refresh"/>
+
         <ProgressBar
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="0dp"
                 android:layout_height="fill_parent"
                 android:id="@+id/bluetoothconnection_dlg_frag_progressBar_discovery"
-                android:padding="10dp" android:layout_weight="1" android:clickable="true"/>
+                android:padding="10dp"
+                android:layout_weight="1"
+                android:clickable="true"/>
+
     </LinearLayout>
 
     <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:id="@+id/bluetoothconnection_dlg_frag_textView_discovered_devices"
+            android:id="@+id/bluetoothconnection_dlg_frag_textView_devices_list"
             android:layout_gravity="left|center_vertical"
             android:layout_weight="0"/>
 
     <ListView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:id="@+id/bluetoothconnection_dlg_frag_listView_discovered_devices"
+            android:id="@+id/bluetoothconnection_dlg_frag_listView_devices"
             android:layout_weight="1"/>
 
     <LinearLayout

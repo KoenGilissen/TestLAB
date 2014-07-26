@@ -1,5 +1,7 @@
 package com.wizard.TestLAB;
 
+import android.util.Log;
+
 /**
  * Created by Koen on 04-Jul-14.
  * Class to parse String lines of GPGGA Global Positioning System Fixed Data
@@ -7,6 +9,9 @@ package com.wizard.TestLAB;
  */
 public class GpggaLineParser
 {
+    private final static boolean DEBUGMODE = true;
+    private final static String DEBUGTAG = "GpggaLineParser";
+
     private boolean valid;
     private String utcTime;
     private double latitude;
@@ -20,6 +25,8 @@ public class GpggaLineParser
     private String unitAltitude;
     private String geoIdSeperation;
     private String unitGeoId;
+    private double latitudeDMS;
+    private double longitudeDMS;
 
     public GpggaLineParser(String gpggaLine)
     {
@@ -33,8 +40,10 @@ public class GpggaLineParser
         {
             valid = true;
             utcTime = split[1];
+            latitudeDMS = Double.parseDouble(split[2]);
             latitude = this.convertLatitudeDMStoDecimalDegrees(split[2], split[3]);
             northSouthIndicator = split[3];
+            longitudeDMS = Double.parseDouble(split[4]);
             longitude = this.convertLongitudeDMStoDecimalDegrees(split[4], split[5]);
             eastWestIndicator = split[5];
             satellitesUsed = Integer.parseInt(split[7]);
@@ -173,6 +182,22 @@ public class GpggaLineParser
         {
             return -1.0;
         }
+    }
+
+    public double distance(double lat_a, double lng_a, double lat_b, double lng_b )
+    {
+        double earthRadius = 3958.75;
+        double latDiff = Math.toRadians(lat_b-lat_a);
+        double lngDiff = Math.toRadians(lng_b-lng_a);
+        double a = Math.sin(latDiff /2) * Math.sin(latDiff /2) +
+                Math.cos(Math.toRadians(lat_a)) * Math.cos(Math.toRadians(lat_b)) *
+                        Math.sin(lngDiff /2) * Math.sin(lngDiff /2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        double distance = earthRadius * c;
+
+        int meterConversion = 1609;
+
+        return distance * (double) meterConversion;
     }
 
 
