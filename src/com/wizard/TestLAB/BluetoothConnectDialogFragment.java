@@ -360,7 +360,7 @@ public class BluetoothConnectDialogFragment extends DialogFragment
 
     /**
      * Method to store (persistent) the selected device in shared preferences
-     * @param bluetoothDevice The device to store 
+     * @param bluetoothDevice The device to store
      */
     private void savePreviousDevice(BluetoothDevice bluetoothDevice)
     {
