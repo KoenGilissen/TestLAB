@@ -218,9 +218,21 @@ public class BluetoothConnectDialogFragment extends DialogFragment
             stringArrayListBluetoothDevices.add(getResources().getString(R.string.bluetooth_connection_dialog_fragment_no_devices_discovered));
             // Make shure the user cannot select the item...
             listViewDiscoveredDevices.setChoiceMode(ListView.CHOICE_MODE_NONE);
+            //Disable listView
+            listViewDiscoveredDevices.setEnabled(false);
+            //Disable connect button
+            connectButton.setEnabled(false);
         }
         else // If there are device found:
         {
+            //if necessary re-enable the listview and connect button
+            if(!listViewDiscoveredDevices.isEnabled())
+                listViewDiscoveredDevices.setEnabled(true);
+            if(!connectButton.isEnabled())
+                connectButton.setEnabled(true);
+            // Reset the choice mode to single
+            if(!(listViewDiscoveredDevices.getChoiceMode() == ListView.CHOICE_MODE_SINGLE))
+                listViewDiscoveredDevices.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             // Extract the (String) name and MAC to add to the ListView
             for(BluetoothDevice device : devicesFoundList)
             {
