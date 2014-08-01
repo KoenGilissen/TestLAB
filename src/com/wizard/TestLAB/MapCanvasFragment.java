@@ -150,7 +150,7 @@ public class MapCanvasFragment extends MapFragment
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, MAXZOOM));
     }
 
-    public void moveCurrentPositionMarker(LatLng newLocation, int newBearing)
+    public void moveCurrentPositionMarker(LatLng newLocation)
     {
         //Center the map view to newLocation
         //map.moveCamera(CameraUpdateFactory.newLatLng(newLocation));
@@ -160,7 +160,6 @@ public class MapCanvasFragment extends MapFragment
         CameraPosition cameraPosition = new CameraPosition.Builder()
                 .target(newLocation)      // Sets the center of the map to the new location
                 .zoom(map.getCameraPosition().zoom)                   // Sets the zoom to prev defined zoom
-                .bearing( (float) newBearing)                // Sets the orientation of the camera to the new bearing
                 .tilt(0)                   // Sets the tilt of the camera to 0 degrees
                 .build();                   // Creates a CameraPosition from the builder
         map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));

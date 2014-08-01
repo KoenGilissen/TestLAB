@@ -7,12 +7,11 @@ import android.util.Log;
  * Class to parse String lines of GPGGA Global Positioning System Fixed Data
  *
  */
-public class GpggaLineParser
+public class GpggaLineParser extends NmeaMessage
 {
-    private final static boolean DEBUGMODE = true;
+    private final static boolean DEBUGMODE = false;
     private final static String DEBUGTAG = "GpggaLineParser";
 
-    private boolean valid;
     private String utcTime;
     private double latitude;
     private String northSouthIndicator;
@@ -30,50 +29,66 @@ public class GpggaLineParser
 
     public GpggaLineParser(String gpggaLine)
     {
-        String[] split = gpggaLine.split(",");
-        for(int i=0; i < split.length; i++)
+        // Super Class (NmeaMessage) constructor call
+        // Holds reference to the gpggaLine argument string passed
+        // Calculates and parses checksum for comparison
+        super(gpggaLine);
+        //Check message integrity
+        if(checksumValid)
         {
-            split[i] = split[i].trim();
-        }
-        positionFixIndicator = Integer.parseInt(split[6]);
-        if(split[0].equals("$GPGGA") && positionFixIndicator > 0) // Check protocolHeader
-        {
-            valid = true;
-            utcTime = split[1];
-            latitudeDMS = Double.parseDouble(split[2]);
-            latitude = this.convertLatitudeDMStoDecimalDegrees(split[2], split[3]);
-            northSouthIndicator = split[3];
-            longitudeDMS = Double.parseDouble(split[4]);
-            longitude = this.convertLongitudeDMStoDecimalDegrees(split[4], split[5]);
-            eastWestIndicator = split[5];
-            satellitesUsed = Integer.parseInt(split[7]);
-            hdop = Double.parseDouble(split[8]);
-            mslAltitude = Double.parseDouble(split[9]);
-            unitAltitude = split[10];
-            geoIdSeperation = split[11];
-            unitGeoId = split[12];
+            String[] split = gpggaLine.split(",");
+            for(int i=0; i < split.length; i++)
+            {
+                split[i] = split[i].trim();
+            }
+            positionFixIndicator = Integer.parseInt(split[6]);
+            if(positionFixIndicator > 0) //Position Fixed
+            {
+                utcTime = split[1];
+                latitudeDMS = Double.parseDouble(split[2]);
+                latitude = this.convertLatitudeDMStoDecimalDegrees(split[2], split[3]);
+                northSouthIndicator = split[3];
+                longitudeDMS = Double.parseDouble(split[4]);
+                longitude = this.convertLongitudeDMStoDecimalDegrees(split[4], split[5]);
+                eastWestIndicator = split[5];
+                satellitesUsed = Integer.parseInt(split[7]);
+                hdop = Double.parseDouble(split[8]);
+                mslAltitude = Double.parseDouble(split[9]);
+                unitAltitude = split[10];
+                geoIdSeperation = split[11];
+                unitGeoId = split[12];
+            }
+            else
+            {
+                this.setInvalid();
+                if(DEBUGMODE)
+                    Log.d(DEBUGTAG, "Position Fix not available");
+            }
         }
         else
         {
-            valid = false;
-            utcTime = "invalid";
-            latitude = -1.0;
-            northSouthIndicator = "invalid";
-            longitude = -1.0;
-            eastWestIndicator = "invalid";
-            positionFixIndicator = -1;
-            satellitesUsed = -1;
-            hdop = -1.0;
-            mslAltitude = -1.0;
-            unitAltitude = "invalid";
-            geoIdSeperation = "invalid";
-            unitGeoId = "invalid";
+            this.setInvalid();
+            if(DEBUGMODE)
+                Log.d(DEBUGTAG, "Invalid CHECKSUM!");
         }
     }
 
-    public boolean isValid()
+    private void setInvalid()
     {
-        return valid;
+        utcTime = "invalid";
+        latitudeDMS = -1.0;
+        latitude = -1.0;
+        northSouthIndicator = "invalid";
+        longitudeDMS = -1.0;
+        longitude = -1.0;
+        eastWestIndicator = "invalid";
+        positionFixIndicator = 0;
+        satellitesUsed = -1;
+        hdop = -1.0;
+        mslAltitude = -1.0;
+        unitAltitude = "invalid";
+        geoIdSeperation = "invalid";
+        unitGeoId = "invalid";
     }
 
     public String getUtcTime() {
@@ -122,6 +137,10 @@ public class GpggaLineParser
 
     public String getUnitGeoId() {
         return unitGeoId;
+    }
+
+    public boolean isCheckSumValid() {
+        return checksumValid;
     }
 
     /**

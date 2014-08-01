@@ -19,7 +19,7 @@ import com.google.android.gms.maps.model.LatLng;
 
 import java.util.ArrayList;
 
-public class MainActivity extends Activity implements IonDialogDoneListener
+public class MainActivity extends Activity implements IonDialogDoneListener, NmeaParser.NmeaLineParsingEvent
 {
 
     private static final String DEBUGTAG = "MainActivity";
@@ -194,7 +194,6 @@ public class MainActivity extends Activity implements IonDialogDoneListener
         //BluetoothDevice bluetoothHC06 = bluetoothAdapter.getRemoteDevice("00:13:12:26:75:67");
         String deviceName = device.getName();
         String deviceAdrress = device.getAddress();
-        String deviceClass = device.getBluetoothClass().toString();
         statusOne.setText("Connecting to : " + deviceName + "  [" + deviceAdrress + "]\n");
         blueService.connect(device);
     }
@@ -241,35 +240,11 @@ public class MainActivity extends Activity implements IonDialogDoneListener
                     if(readMessage.contains("\n"))
                     {
                         line = line + readMessage;
+                        //Only start Asynctask if NMEA message is of interst (not all NMEA message parsers are implemented)
                         if(line.contains("$GPGGA"))
                         {
-                            GpggaLineParser gpggaData = new GpggaLineParser(line);
-                            if(gpggaData.isValid())
-                            {
-                                double latitude = gpggaData.getLatitude();
-                                double longitude = gpggaData.getLongitude();
-                                //Update MapCanvasFragment with new location and orientation
-                                previousLocation = currentLocation;
-                                currentLocation = new LatLng( latitude,  longitude);
-                                double delta = gpggaData.distance(currentLocation.latitude, currentLocation.longitude, previousLocation.latitude, previousLocation.longitude);
-
-                                MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
-                                mapFrag.moveCurrentPositionMarker(currentLocation, 0); //do not change bearing, compass sensor drifts....
-
-                                //To see gps drift
-                                //mapFrag.addCurrentPositionMarkerToMap(currentLocation);
-
-                                statusOne.setText("Altitude: " + gpggaData.getMslAltitude() + gpggaData.getUnitAltitude());
-                                statusTwo.setText(Double.toString(gpggaData.getLatitude()) + gpggaData.getNorthSouthIndicator());
-                                statusThree.setText(Double.toString(longitude) + gpggaData.getEastWestIndicator());
-                                statusFour.setText("Satellites: " + Integer.toString(gpggaData.getSatellitesUsed()));
-                                statusFive.setText("Delta: " + Double.toString(delta) + " m");
-
-                            }
-                            else
-                            {
-                                statusOne.setText("Waiting for GPS Fix ....");
-                            }
+                            NmeaParser parser = new NmeaParser(getApplicationContext(), MainActivity.this);
+                            parser.execute(line);
                         }
                         line = "";
                     }
@@ -333,4 +308,43 @@ public class MainActivity extends Activity implements IonDialogDoneListener
 
     }
 
+    @Override
+    public void parsingCompleted(NmeaMessage msg)
+    {
+        if(msg != null)
+        {
+            if(msg.isChecksumValid())
+            {
+                if (msg instanceof GpggaLineParser)
+                {
+                    GpggaLineParser gpggaData = (GpggaLineParser) msg;
+                    // From NMEA Reference Manual:
+                    // Position Fix Indicator > 0 => fix valid
+                    if (gpggaData.getPositionFixIndicator() > 0) {
+                        double latitude = gpggaData.getLatitude();
+                        double longitude = gpggaData.getLongitude();
+                        //Update MapCanvasFragment with new location and orientation
+                        previousLocation = currentLocation;
+                        currentLocation = new LatLng(latitude, longitude);
+                        double delta = gpggaData.distance(currentLocation.latitude, currentLocation.longitude, previousLocation.latitude, previousLocation.longitude);
+                        MapCanvasFragment mapFrag = (MapCanvasFragment) getFragmentManager().findFragmentById(R.id.main_fragment_container);
+                        mapFrag.moveCurrentPositionMarker(currentLocation);
+                        statusOne.setTextColor(Color.LTGRAY);
+                        statusOne.setText("Altitude: " + gpggaData.getMslAltitude() + gpggaData.getUnitAltitude());
+                        statusTwo.setText(Double.toString(gpggaData.getLatitude()) + gpggaData.getNorthSouthIndicator());
+                        statusThree.setText(Double.toString(longitude) + gpggaData.getEastWestIndicator());
+                        statusFour.setText("Satellites: " + Integer.toString(gpggaData.getSatellitesUsed()));
+                        statusFive.setText("Delta: " + Double.toString(delta) + " m");
+                    }
+                    else
+                    {
+                        statusOne.setTextColor(Color.MAGENTA);
+                        statusOne.setText("Waiting for GPS Fix ....");
+                    }
+                }
+                //else if(msg instanceof GpgllLineParser){}
+                else{}
+            }
+        }
+    }
 }
